@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"os"
+	"os/exec"
 	"strings"
 
 	mp "github.com/mackerelio/go-mackerel-plugin"
 )
 
 type NvmePlugin struct {
+	Device string
 	Prefix string
 }
 
@@ -42,7 +43,12 @@ func (n NvmePlugin) GraphDefinition() map[string]mp.Graphs {
 func (n NvmePlugin) FetchMetrics() (map[string]float64, error) {
 	var record NvmeSmartLogRecord
 
-	err := json.NewDecoder(os.Stdin).Decode(&record)
+	out, err := exec.Command("nvme", "smart-log", n.Device, "--output-format=json").Output()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to fetch nvme metrics: %s", err)
+	}
+
+	err = json.Unmarshal(out, &record)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to fetch nvme metrics: %s", err)
 	}
@@ -60,11 +66,13 @@ func (n NvmePlugin) MetricKeyPrefix() string {
 }
 
 func main() {
+	optDevice := flag.String("device", "/dev/nvme0", "nvme device path")
 	optPrefix := flag.String("metric-key-prefix", "nvme", "Metric key prefix")
 	optTempfile := flag.String("tempfile", "", "Temp file name")
 	flag.Parse()
 
 	n := NvmePlugin{
+		Device: *optDevice,
 		Prefix: *optPrefix,
 	}
 	plugin := mp.NewMackerelPlugin(n)
